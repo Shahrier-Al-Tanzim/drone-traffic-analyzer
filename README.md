@@ -19,7 +19,7 @@ Since a vehicle's appearance can drastically change angle frame-by-frame, the tr
 - `Car: 1 point`
 - `Motorcycle: 1 point`
 
-### The Core Challenge: Preventing Double-Counting
+### The Challenge
 The most significant challenge in this project is accurately counting unique vehicles passing through the scene while accounting for edge cases such as vehicles stopping, slowing down, or temporary occlusions. Handling these false positives and double-counting scenarios is achieved through strict spatial and temporal deduplication logic:
 - **Temporary Occlusions**: The underlying **ByteTrack** algorithm inherently handles vehicles passing under trees or signs by maintaining track ID history even when bounding boxes temporarily vanish.
 - **Vehicles Stopping or Slowing Down**: To prevent double-counting vehicles that stop (like at a traffic light or parked cars) and then move again or lose tracking ID, the system compares the exact Euclidean distance of the centroid of new IDs against recently expired/lost IDs. If a new ID appears within 40 pixels of an old ID's last known location within a short 15-frame gap, it is classified as the same vehicle and ignored in the final count.
