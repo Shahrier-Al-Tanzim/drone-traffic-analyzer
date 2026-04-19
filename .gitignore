@@ -1,0 +1,28 @@
+# Models
+*.pt
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+.ipynb_checkpoints/
+
+# Node.js / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env*
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# App Data & Reports
+temp_uploads/
+traffic_report_*.csv
+traffic_report_*.xlsx
+
+# System Files
+.DS_Store
+Thumbs.db
