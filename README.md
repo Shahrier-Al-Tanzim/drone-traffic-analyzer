@@ -8,8 +8,7 @@ A robust, production-ready full-stack application designed to process drone vide
 
 The core of this application relies on a state-of-the-art computer vision pipeline designed specifically for overhead drone footage.
 
-### Model Integration
-- **Detection**: Utilizes **YOLOv8** (Large/Medium) configured with a high resolution (`imgsz=1080`) to accurately identify small vehicles from high altitudes. The base confidence threshold is kept low (`conf=0.05`) to maximize recall for distant vehicles.
+- **Detection**: Utilizes **YOLOv8** (Large/Medium) configured with a high resolution (**`imgsz=1280`**) to accurately identify small vehicles from high altitudes. The base confidence threshold is kept low (`conf=0.05`) to maximize recall for distant vehicles.
 - **Tracking**: Integrates **ByteTrack** (`bytetrack.yaml`) for resilient bounding box association across multiple frames, smoothly handling temporary occlusions (e.g., vehicles passing under trees or signs).
 
 ### Advanced Classification Logic
@@ -35,10 +34,11 @@ The project transitioned from a monolithic Desktop GUI to a modern, decoupled **
 
 ### Backend (Python / FastAPI)
 The backend acts as a highly concurrent REST API server serving the computer vision engine.
-- **Endpoints**: Exposes `/api/upload`, `/api/process`, `/api/status`, `/api/video_feed`, and `/api/report`.
+- **Endpoints**: Exposes `/api/upload`, `/api/process`, `/api/pause`, `/api/resume`, `/api/stop`, `/api/status`, `/api/video_feed`, and `/api/report`.
 - **Threading Model**: Processing heavy video files directly blocks HTTP requests. To solve this, the processing engine (`engine.py`) initializes a native Python background daemon thread for each `task_id`. 
-- **State Management**: The background thread continually updates a global memory dictionary with the latest processing progress, current statistics, and the most recent annotated frame buffer (OpenCV `ndarray`).
-- **Video Streaming**: The `video_feed` endpoint leverages a `StreamingResponse` using the `multipart/x-mixed-replace` content type. This allows the API to continuously push JPEG-encoded frames directly to the browser over a single HTTP connection without relying on heavy WebSocket video streaming.
+- **State Management**: The background thread continually updates a global memory dictionary with the latest processing progress, current statistics, and the most recent annotated frame buffer.
+- **Real-time Data Delivery**: The `/api/status` endpoint now provides a live JSON array of detection records (timestamp, track ID, vehicle class) alongside general progress, allowing the frontend to render a real-time detection table.
+- **Video Streaming**: The `video_feed` endpoint leverages a `StreamingResponse` using the `multipart/x-mixed-replace` content type. This allows the API to continuously push JPEG-encoded frames directly to the browser over a single HTTP connection.
 
 ### Frontend (Next.js / React)
 The frontend is a lightweight, fully decoupled client utilizing Next.js (App Router).
@@ -49,9 +49,10 @@ The frontend is a lightweight, fully decoupled client utilizing Next.js (App Rou
 
 ## 3. Engineering Assumptions
 
-1. **Resolution & Resources**: We assume the host machine possesses decent processing capabilities. `imgsz=1080` is computationally expensive but mandatory for small-object drone detection.
+1. **Resolution & Resources**: We assume the host machine possesses decent processing capabilities. `imgsz=1280` is computationally expensive but mandatory for small-object drone detection.
 2. **Prioritization of Recall**: The system prioritizes capturing every moving vehicle over aggressively filtering the scene. The low `0.05` base threshold guarantees cars aren't missed, while specific logic (like the **0.50 train and bus** check) precisely surgical-strikes the edge-case false positives.
-3. **Stateless Operations**: Currently, the `task_states` dictionary is stored in application memory. If the server crashes, active processing data is lost. For true horizontal scaling, this state would need to be migrated to Redis.
+3. **Sequential Reporting**: Reports are generated with sequential numerical naming (e.g., `traffic_report_1.csv`) to prevent accidental overwrites during multi-session analysis.
+4. **Stateless Operations**: Currently, the `task_states` dictionary is stored in application memory. If the server crashes, active processing data is lost.
 
 ---
 
@@ -79,7 +80,7 @@ Follow these steps to deploy the Smart Drone Analyzer on your local machine.
    # macOS/Linux:
    source venv/bin/activate
 
-   pip install fastapi uvicorn python-multipart ultralytics opencv-python pandas openpyxl
+   pip install fastapi uvicorn python-multipart ultralytics opencv-python pandas openpyxl lapx
    ```
 3. Start the FastAPI backend server:
    ```bash
