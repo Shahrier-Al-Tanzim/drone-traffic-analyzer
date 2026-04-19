@@ -3,6 +3,8 @@ import time
 import threading
 import os
 import traceback
+import glob
+import re
 from tracker import VehicleTracker
 from report_generator import generate_report
 
@@ -18,10 +20,27 @@ from report_generator import generate_report
 #       "records": [],
 #       "duration": 0.0,
 #       "report_path": "",
-#       "_stop_event": threading.Event()
+#       "_stop_event": threading.Event(),
+#       "_pause_event": threading.Event() # Set = running, Clear = paused
 #   }
 # }
 task_states = {}
+
+def get_next_report_number():
+    """Finds the next available report number by scanning the directory."""
+    files = glob.glob("traffic_report_*.csv")
+    max_num = 0
+    for f in files:
+        # Match filenames like traffic_report_1.csv, traffic_report_10.csv
+        match = re.search(r"traffic_report_(\d+)\.csv", f)
+        if match:
+            try:
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                continue
+    return max_num + 1
 
 def get_task_state(task_id):
     if task_id not in task_states:
@@ -30,9 +49,27 @@ def get_task_state(task_id):
 
 def stop_task(task_id):
     state = get_task_state(task_id)
-    if state and "status" in state and state["status"] == "processing":
+    if state and "status" in state and state["status"] in ["processing", "paused"]:
         if "_stop_event" in state:
             state["_stop_event"].set()
+        if "_pause_event" in state:
+            state["_pause_event"].set() # Unblock if paused
+        return True
+    return False
+
+def pause_task(task_id):
+    state = get_task_state(task_id)
+    if state and state["status"] == "processing":
+        state["_pause_event"].clear()
+        state["status"] = "paused"
+        return True
+    return False
+
+def resume_task(task_id):
+    state = get_task_state(task_id)
+    if state and state["status"] == "paused":
+        state["_pause_event"].set()
+        state["status"] = "processing"
         return True
     return False
 
@@ -59,6 +96,12 @@ def _process_video(task_id, video_path):
         start_time = time.time()
 
         while not state["_stop_event"].is_set():
+            # Check for pause
+            state["_pause_event"].wait()
+            
+            if state["_stop_event"].is_set():
+                break
+
             ret, frame = cap.read()
             if not ret:
                 break
@@ -89,8 +132,9 @@ def _process_video(task_id, video_path):
         state["records"] = tracker.records
         
         if not state["_stop_event"].is_set():
-            # Generate report
-            report_filename = f"traffic_report_{task_id}.csv"
+            # Generate report with sequential numerical naming
+            report_num = get_next_report_number()
+            report_filename = f"traffic_report_{report_num}.csv"
             generate_report(tracker.records, duration, report_filename)
             state["report_path"] = report_filename
             state["status"] = "completed"
@@ -113,8 +157,10 @@ def start_task(task_id, video_path):
         "records": [],
         "duration": 0.0,
         "report_path": "",
-        "_stop_event": threading.Event()
+        "_stop_event": threading.Event(),
+        "_pause_event": threading.Event()
     }
+    task_states[task_id]["_pause_event"].set() # Start in running state
     
     thread = threading.Thread(target=_process_video, args=(task_id, video_path), daemon=True)
     thread.start()

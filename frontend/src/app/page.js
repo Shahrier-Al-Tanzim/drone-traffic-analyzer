@@ -8,9 +8,12 @@ const API_BASE = 'http://localhost:8000/api';
 export default function Home() {
   const [file, setFile] = useState(null);
   const [taskId, setTaskId] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle, uploading, ready, processing, completed, error
+  const [status, setStatus] = useState('idle'); // idle, uploading, ready, processing, completed, error, paused
   const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const [stats, setStats] = useState({});
+  const [records, setRecords] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   
   const fileInputRef = useRef(null);
@@ -26,8 +29,16 @@ export default function Home() {
             const data = await res.json();
             setProgress(data.progress);
             setStats(data.class_counts);
+            if (data.status === 'paused') {
+              setIsPaused(true);
+              setStatus('paused');
+            } else if (data.status === 'processing') {
+              setIsPaused(false);
+              setStatus('processing');
+            }
             if (data.status === 'completed' || data.status === 'error' || data.status === 'stopped') {
               setStatus(data.status);
+              if (data.records) setRecords(data.records);
               if (data.error_msg) setErrorMsg(data.error_msg);
               clearInterval(pollingInterval.current);
             }
@@ -52,27 +63,42 @@ export default function Home() {
       setStatus('uploading');
       setProgress(0);
       setStats({});
+      setRecords([]);
       setTaskId(null);
       setErrorMsg('');
 
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      try {
-        const res = await fetch(`${API_BASE}/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!res.ok) throw new Error('Upload failed');
-        
-        const data = await res.json();
-        setTaskId(data.task_id);
-        setStatus('ready');
-      } catch (err) {
-        setErrorMsg(err.message);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/upload`, true);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percent);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          setTaskId(data.task_id);
+          setStatus('ready');
+          setUploadProgress(0); 
+          setProgress(0); // Ensure processing progress is 0
+        } else {
+          setErrorMsg('Upload failed');
+          setStatus('error');
+        }
+      };
+
+      xhr.onerror = () => {
+        setErrorMsg('Upload connection error');
         setStatus('error');
-      }
+      };
+
+      xhr.send(formData);
     }
   };
 
@@ -86,6 +112,7 @@ export default function Home() {
       if (!res.ok) throw new Error('Failed to start processing');
       
       setStatus('processing');
+      setIsPaused(false);
     } catch (err) {
       setErrorMsg(err.message);
       setStatus('error');
@@ -97,9 +124,34 @@ export default function Home() {
     
     try {
       await fetch(`${API_BASE}/stop/${taskId}`, { method: 'POST' });
-      setStatus('stopped');
     } catch (err) {
       console.error(err);
+    } finally {
+      // Full reset of state as requested by the user
+      setFile(null);
+      setTaskId(null);
+      setStatus('idle');
+      setProgress(0);
+      setUploadProgress(0);
+      setStats({});
+      setRecords([]);
+      setIsPaused(false);
+      setErrorMsg('');
+    }
+  };
+
+  const togglePause = async () => {
+    if (!taskId) return;
+    
+    try {
+      const endpoint = isPaused ? 'resume' : 'pause';
+      const res = await fetch(`${API_BASE}/${endpoint}/${taskId}`, { method: 'POST' });
+      if (res.ok) {
+        setIsPaused(!isPaused);
+        setStatus(isPaused ? 'processing' : 'paused');
+      }
+    } catch (err) {
+      console.error("Failed to toggle pause:", err);
     }
   };
 
@@ -122,17 +174,17 @@ export default function Home() {
         {/* Left Column: Video & Controls */}
         <div className={styles.videoSection}>
           <div className={styles.videoContainer}>
-            {(status === 'processing' || status === 'completed' || status === 'stopped') ? (
+            {(status === 'processing' || status === 'completed' || status === 'paused') ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img 
                 src={`${API_BASE}/video_feed/${taskId}`} 
                 alt="Live Processing Feed" 
-                className={styles.videoStream}
+                className={status === 'paused' ? styles.videoStreamPaused : styles.videoStream}
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
             ) : (
               <div className={styles.videoPlaceholder}>
-                {status === 'uploading' ? 'Uploading...' : file ? `Ready to process: ${file.name}` : 'No video selected'}
+                {status === 'uploading' ? `Uploading: ${uploadProgress}%` : file ? `Ready to process: ${file.name}` : 'No video selected'}
               </div>
             )}
           </div>
@@ -154,15 +206,23 @@ export default function Home() {
               }}
               disabled={status === 'uploading' || status === 'processing'}
             >
-              {status === 'uploading' ? 'Uploading...' : 'Upload Video'}
+              {status === 'uploading' ? `Uploading ${uploadProgress}%` : 'Upload Video'}
             </button>
             
             <button 
               className="primary-btn" 
               onClick={startProcessing}
-              disabled={!(status === 'ready' || status === 'stopped')}
+              disabled={status !== 'ready'}
             >
               Start Processing
+            </button>
+
+            <button 
+              className="secondary-btn" 
+              onClick={togglePause}
+              disabled={!(status === 'processing' || status === 'paused')}
+            >
+              {isPaused ? 'Resume' : 'Pause'}
             </button>
 
             <button 
@@ -230,6 +290,37 @@ export default function Home() {
 
         </div>
       </div>
+      
+      {/* Records Table Section */}
+      {status === 'completed' && records.length > 0 && (
+        <div className={`${styles.tableSection} glass-panel`}>
+          <div className={styles.tableHeader}>
+            <h2>Detailed Traffic Report</h2>
+          </div>
+          <div className={styles.tableContainer}>
+            <table className={styles.recordsTable}>
+              <thead>
+                <tr>
+                  <th>Frame</th>
+                  <th>Timestamp (s)</th>
+                  <th>Track ID</th>
+                  <th>Vehicle Class</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((row, idx) => (
+                  <tr key={idx}>
+                    <td>{row.frame_index}</td>
+                    <td>{row.timestamp?.toFixed(2)}</td>
+                    <td>{row.track_id}</td>
+                    <td className={styles.capitalize}>{row.class}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

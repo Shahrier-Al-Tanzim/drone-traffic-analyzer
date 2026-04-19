@@ -6,15 +6,18 @@ def generate_report(records, duration, output_path):
     Generates a structured data report (CSV/Excel).
     
     Args:
-        records: list of dicts with keys (frame_index, timestamp, track_id, class, confidence, detected_at_y)
+        records: list of dicts with keys (frame_index, timestamp, track_id, class)
         duration: processing duration in seconds
         output_path: filepath to save the report (e.g., 'report.csv' or 'report.xlsx')
     """
     if not records:
         print("No records to export.")
-        df = pd.DataFrame(columns=['frame_index', 'timestamp', 'track_id', 'class', 'confidence', 'detected_at_y'])
+        df = pd.DataFrame(columns=['frame_index', 'timestamp', 'track_id', 'class'])
     else:
         df = pd.DataFrame(records)
+        # Exclude specific columns as requested by the user
+        cols_to_exclude = ['confidence', 'detected_at_y']
+        df = df.drop(columns=[col for col in cols_to_exclude if col in df.columns], errors='ignore')
 
     # Convert timestamp to a more readable format if necessary, or keep as float seconds
     df['timestamp'] = df['timestamp'].round(2)

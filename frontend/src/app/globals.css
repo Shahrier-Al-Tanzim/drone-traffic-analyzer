@@ -101,6 +101,29 @@ a {
   cursor: not-allowed;
 }
 
+.secondary-btn {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: white;
+  border: 1px solid var(--glass-border);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .success-btn {
   background-color: var(--success-color);
   color: white;
@@ -118,4 +141,13 @@ a {
 .success-btn:hover {
   transform: translateY(-2px);
   background-color: #059669;
+}
+
+.success-btn:disabled {
+  background-color: #1e293b;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }

@@ -4,7 +4,7 @@ import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from engine import start_task, stop_task, get_task_state
+from engine import start_task, stop_task, get_task_state, pause_task, resume_task
 
 app = FastAPI(title="Smart Drone Traffic Analyzer API")
 
@@ -49,18 +49,41 @@ async def stop_processing(task_id: str):
         return {"message": "Processing stopped"}
     raise HTTPException(status_code=400, detail="Task not running or not found")
 
+@app.post("/api/pause/{task_id}")
+async def pause_processing(task_id: str):
+    if pause_task(task_id):
+        return {"message": "Processing paused"}
+    raise HTTPException(status_code=400, detail="Task not processing or not found")
+
+@app.post("/api/resume/{task_id}")
+async def resume_processing(task_id: str):
+    if resume_task(task_id):
+        return {"message": "Processing resumed"}
+    raise HTTPException(status_code=400, detail="Task not paused or not found")
+
 @app.get("/api/status/{task_id}")
 async def get_status(task_id: str):
     state = get_task_state(task_id)
     if not state:
         raise HTTPException(status_code=404, detail="Task not found")
         
-    return {
+    response = {
         "status": state["status"],
         "progress": state["progress"],
         "class_counts": state["class_counts"],
         "error_msg": state["error_msg"]
     }
+    
+    if state["status"] == "completed":
+        # Return detection records, excluding internal columns
+        records = state.get("records", [])
+        exclude = ['confidence', 'detected_at_y']
+        response["records"] = [
+            {k: v for k, v in r.items() if k not in exclude}
+            for r in records
+        ]
+        
+    return response
 
 def generate_frames(task_id: str):
     while True:

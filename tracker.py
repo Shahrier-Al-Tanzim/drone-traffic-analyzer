@@ -4,7 +4,6 @@ from ultralytics import YOLO
 
 class VehicleTracker:
     def __init__(self, model_path='yolov8l.pt'):
-        # Reverting to yolov8m.pt: it provides a much better speed/accuracy trade-off than 'l' or 'n'.
         self.model = YOLO(model_path)
         self.counted_ids = set()
         self.track_history = {} # track_id -> list of (cx, cy)
